@@ -90,6 +90,11 @@ function data:getBatch()
    end
    print(type(res))
    return res
+   ---- jjliu: modified to return class as well
+   --print(table.getn(result))
+   --local res2 = result[3]
+   --print(res2)
+   --return res, res2
 end
 
 function data:size()
