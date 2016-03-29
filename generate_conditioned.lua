@@ -15,8 +15,8 @@ opt = {
     gpu = 1,               -- gpu mode. 0 = CPU, 1 = GPU
     display = 1,           -- Display image: 0 = false, 1 = true
     nz = 100,              
-    nw = 70,
-    nr = 30,
+    nw = 94,
+    nr = 6,
     word = "barrel",       -- the word on which to generate
 }
 for k,v in pairs(opt) do opt[k] = tonumber(os.getenv(k)) or os.getenv(k) or opt[k] end
@@ -25,6 +25,7 @@ if opt.display == 0 then opt.display = false end
 
 assert(net ~= '', 'provide a generator model')
 
+word = opt.word
 nz = opt.nz
 nw = opt.nw
 nr = opt.nr
@@ -46,7 +47,7 @@ print(net)
 Cond_Util = paths.dofile('data/conditional_util.lua')
 
 -- build word2vec map
-word2vec_map = Cond_Util.load_word2vec_map(word2vec_map_path)
+word2vec_map = Cond_Util.load_word2vec_map(word2vec_map_path, nw)
 
 -- word2vec_noise
 if opt.noisetype == 'uniform' then
@@ -56,9 +57,12 @@ elseif opt.noisetype == 'normal' then
 end
 -- word2vec_vec
 if word2vec_map[word] ~= nil then
+  print("word is valid")
   for i=1,opt.batchSize do
     word2vec_vec[{i,{}}] = word2vec_map[word]
   end
+else
+  error("word is invalid: " .. word)
 end
 word2vec_total[{{}, {1,nw}, {}, {}}] = word2vec_vec
 word2vec_total[{{}, {nw+1, nz}, {}, {}}] = word2vec_noise
@@ -107,6 +111,7 @@ end
 -- this drastically reduces the memory needed to generate samples
 util.optimizeInferenceMemory(net)
 
+print(word2vec_total)
 local images = net:forward(word2vec_total)
 print('Images size: ', images:size(1)..' x '..images:size(2) ..' x '..images:size(3)..' x '..images:size(4))
 images:add(1):mul(0.5)

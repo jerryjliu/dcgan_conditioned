@@ -13,12 +13,12 @@ opt = {
    loadSize = 96,
    fineSize = 64,
    nz = 100,               -- #  of dim for Z (nz = nw + nr)
-   nw = 70,                -- # of dim for word2vec
-   nr = 30,                -- # of dim for noise  
+   nw = 94,                -- # of dim for word2vec
+   nr = 6,                -- # of dim for noise  
    ngf = 64,               -- #  of gen filters in first conv layer
    ndf = 64,               -- #  of discrim filters in first conv layer
    nThreads = 4,           -- #  of data loading threads to use
-   niter = 100,             -- #  of iter at starting learning rate
+   niter = 50,             -- #  of iter at starting learning rate
    --lr = 0.0002,            -- initial learning rate for adam
    lr=0.0002,
    beta1 = 0.5,            -- momentum term of adam
@@ -186,7 +186,9 @@ local fDx = function(x)
    local real, real_class_ids, real_classes = data:getBatch()
    print("Real classes *********** ");
    --print(#real_classes)
-   --print(real_classes)
+   print(real_classes[1])
+   print(real_classes[2])
+   print(real_classes[3])
    
    -- find synset word for each class, put into word2vec_vec tensor
    word2vec_vec:zero()
@@ -195,11 +197,13 @@ local fDx = function(x)
      -- look up in dictionary - depends on whether wnid is toggled
      word = class
      if opt.wnid == 1 and wnid_synset_map[class] ~= nil then 
-       word = wnid_synset_map[class]
+       word = Cond_Util.underscore_phrase(wnid_synset_map[class])
      end
      if word2vec_map[word] ~= nil then
        --print(word2vec_map[word])
        word2vec_vec[{i}] = word2vec_map[word]
+     else
+       error("Error: no word2vec embedding found for " .. word .. "," .. class)
      end
    end
 
@@ -271,6 +275,7 @@ end
 for epoch = 1, opt.niter do
    epoch_tm:reset()
    local counter = 0
+   print("Hello world!!")
    for i = 1, math.min(data:size(), opt.ntrain), opt.batchSize do
       tm:reset()
       -- (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
