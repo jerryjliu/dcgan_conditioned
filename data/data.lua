@@ -51,10 +51,15 @@ function data.new(n, dataset_name, opt_)
    end
 
    local nSamples = 0
+   local nClasses = 0
    self.threads:addjob(function() return trainLoader:size() end,
          function(c) nSamples = c end)
    self.threads:synchronize()
+   self.threads:addjob(function() return #trainLoader.classes end,
+         function(c) nClasses = c end)
+   self.threads:synchronize()
    self._size = nSamples
+   self._num_classes = nClasses
 
    for i = 1, n do
       self.threads:addjob(self._getFromThreads,
@@ -99,6 +104,10 @@ end
 
 function data:size()
    return self._size
+end
+
+function data:numClasses()
+  return self._num_classes
 end
 
 return data

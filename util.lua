@@ -31,6 +31,9 @@ function util.save(filename, net, gpu)
 
         -- clean up buffers
         local m = netsave.modules[k]
+        --print("module?")
+        --print(torch.type(m))
+        --print(m.output)
         m.output = m.output.new()
         m.gradInput = m.gradInput.new()
         m.finput = m.finput and m.finput.new() or nil

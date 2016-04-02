@@ -6,18 +6,22 @@ torch.setdefaulttensortype('torch.FloatTensor')
 word2vec_map_path = '/data/courses/iw16/jjliu/word2vec/word2vec/word2vec_output.txt'
 
 opt = {
-    batchSize = 32,        -- number of samples to produce
+    batchSize = 100,        -- number of samples to produce
     noisetype = 'normal',  -- type of noise distribution (uniform / normal).
     net = '',              -- path to the generator network
     imsize = 1,            -- used to produce larger images. 1 = 64px. 2 = 80px, 3 = 96px, ...
     noisemode = 'random',  -- random / line / linefull1d / linefull
     name = 'generation1',  -- name of the file saved
     gpu = 1,               -- gpu mode. 0 = CPU, 1 = GPU
-    display = 1,           -- Display image: 0 = false, 1 = true
+    display = 0,           -- Display image: 0 = false, 1 = true
     nz = 100,              
-    nw = 94,
-    nr = 6,
+    nw = 80,
+    nr = 20,
     word = "barrel",       -- the word on which to generate
+    class_id = 1,          -- the class id on which to generate
+    num_classes=3,         -- the total number of classes
+    word2vec = 0,          -- toggles whether to generate based on word2vec (using word field)
+                           -- or class_id (using class_id) field. Depends on training.
 }
 for k,v in pairs(opt) do opt[k] = tonumber(os.getenv(k)) or os.getenv(k) or opt[k] end
 print(opt)
@@ -32,6 +36,11 @@ nr = opt.nr
 local word2vec_vec = torch.Tensor(opt.batchSize, nw, 1, 1)
 local word2vec_noise = torch.Tensor(opt.batchSize, nr, 1, 1)
 local word2vec_total = torch.Tensor(opt.batchSize, nz, 1, 1)
+
+-- one-hot specific
+local onehot_vec = torch.Tensor(opt.batchSize, opt.num_classes, 1, 1)
+local onehot_total = torch.Tensor(opt.batchSize, nz, 1, 1)
+
 
 --noise = torch.Tensor(opt.batchSize, opt.nz, opt.imsize, opt.imsize)
 net = util.load(opt.net, opt.gpu)
@@ -49,23 +58,40 @@ Cond_Util = paths.dofile('data/conditional_util.lua')
 -- build word2vec map
 word2vec_map = Cond_Util.load_word2vec_map(word2vec_map_path, nw)
 
--- word2vec_noise
-if opt.noisetype == 'uniform' then
-    word2vec_noise:uniform(-1, 1)
-elseif opt.noisetype == 'normal' then
-    word2vec_noise:normal(0, 1)
-end
--- word2vec_vec
-if word2vec_map[word] ~= nil then
-  print("word is valid")
-  for i=1,opt.batchSize do
-    word2vec_vec[{i,{}}] = word2vec_map[word]
+if opt.word2vec == 1 then
+  -- word2vec_noise
+  if opt.noisetype == 'uniform' then
+      word2vec_noise:uniform(-1, 1)
+  elseif opt.noisetype == 'normal' then
+      word2vec_noise:normal(0, 1)
   end
-else
-  error("word is invalid: " .. word)
+  -- word2vec_vec
+  if word2vec_map[word] ~= nil then
+    print("word is valid")
+    for i=1,opt.batchSize do
+      word2vec_vec[{i,{}}] = word2vec_map[word]
+    end
+  else
+    error("word is invalid: " .. word)
+  end
+  word2vec_total[{{}, {1,nw}, {}, {}}] = word2vec_vec
+  word2vec_total[{{}, {nw+1, nz}, {}, {}}] = word2vec_noise
+elseif opt.word2vec == 0 then
+   onehot_vec:zero()
+   for i=1, opt.batchSize do
+     onehot_vec[{i, opt.class_id, 1, 1}] = 1.0
+   end
+
+   if opt.noisetype == 'uniform' then -- regenerate random noise
+       onehot_total:uniform(-1, 1)
+   elseif opt.noisetype == 'normal' then
+       onehot_total:normal(0, 1)
+   end
+   -- insert one-hot encoding into first few entries
+   onehot_total[{{}, {1,opt.num_classes}, {}, {}}] = onehot_vec
+   print(onehot_total[{{1,5}}])
+   print("hello world")
 end
-word2vec_total[{{}, {1,nw}, {}, {}}] = word2vec_vec
-word2vec_total[{{}, {nw+1, nz}, {}, {}}] = word2vec_noise
 
 --noiseL = torch.FloatTensor(opt.nz):uniform(-1, 1)
 --noiseR = torch.FloatTensor(opt.nz):uniform(-1, 1)
@@ -103,6 +129,8 @@ if opt.gpu > 0 then
     word2vec_noise = word2vec_noise:cuda()
     word2vec_vec = word2vec_vec:cuda()
     word2vec_total = word2vec_total:cuda()
+    onehot_vec = onehot_vec:cuda()
+    onehot_total = onehot_total:cuda()
 else
    net:float()
 end
@@ -111,8 +139,14 @@ end
 -- this drastically reduces the memory needed to generate samples
 util.optimizeInferenceMemory(net)
 
-print(word2vec_total)
-local images = net:forward(word2vec_total)
+local images = nil
+if opt.word2vec == 1 then
+  print(word2vec_total)
+  images = net:forward(word2vec_total)
+elseif opt.word2vec == 0 then
+  images = net:forward(onehot_total)
+end
+
 print('Images size: ', images:size(1)..' x '..images:size(2) ..' x '..images:size(3)..' x '..images:size(4))
 images:add(1):mul(0.5)
 --print(images)
@@ -125,3 +159,4 @@ if opt.display then
     disp.image(images)
     print('Displayed image')
 end
+
