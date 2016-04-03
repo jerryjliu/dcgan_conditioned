@@ -20,7 +20,7 @@ opt = {
    nThreads = 4,           -- #  of data loading threads to use
    niter = 50,             -- #  of iter at starting learning rate
    --lr = 0.0002,            -- initial learning rate for adam
-   lr=0.0002,
+   lr=0.0001,
    beta1 = 0.5,            -- momentum term of adam
    ntrain = math.huge,     -- #  of examples per epoch. math.huge for full dataset
    display = 0,            -- display samples while training. 0 = false
@@ -114,23 +114,23 @@ netD:add(SpatialBatchNormalization(ndf * 4)):add(nn.LeakyReLU(0.2, true))
 netD:add(SpatialConvolution(ndf * 4, ndf * 8, 4, 4, 2, 2, 1, 1))
 netD:add(SpatialBatchNormalization(ndf * 8)):add(nn.LeakyReLU(0.2, true))
 -- state size: (ndf*8) x 4 x 4
---netD:add(SpatialConvolution(ndf * 8, numClasses, 4, 4))
-netD:add(SpatialConvolution(ndf * 8, data:numClasses() * 2, 4, 4))
--- state size: numClasses x 1 x 1
-netD:add(nn.View(data:numClasses() * 2):setNumInputDims(3))
+--netD:add(SpatialConvolution(ndf * 8, numClasses+1, 4, 4))
+netD:add(SpatialConvolution(ndf * 8, data:numClasses() + 1, 4, 4))
+-- state size: numClasses+1 x 1 x 1
+netD:add(nn.View(data:numClasses() + 1):setNumInputDims(3))
 ---- state size: numClasses
 netD:apply(weights_init)
 
 -- input is {(nc)x64x64, numClassesx1x1}
-netD_par:add(netD)
-netD_par:add(nn.View(data:numClasses()):setNumInputDims(3))
+--netD_par:add(netD)
+--netD_par:add(nn.View(data:numClasses()):setNumInputDims(3))
 
 -- input is {(nc)x64x64, numClassesx1x1}
-netD_C:add(netD_par)
+--netD_C:add(netD_par)
 -- table of dim {numClasses, numClasses}
-netD_C:add(nn.JoinTable(2)) -- dim 2 b/c dim 1 is the batch number
+--netD_C:add(nn.JoinTable(2)) -- dim 2 b/c dim 1 is the batch number
 -- tensor of size (numClasses * 2)
-netD_C:add(nn.Linear(data:numClasses() * 3, 1))
+--netD_C:add(nn.Linear(data:numClasses() * 3, 1))
  --state size: 1
 --netD_C:add(nn.JoinTable(2)) -- dim 2 b/c dim 1 is the batch number
 ---- tensor of size (numClasses * 2)x1x1
@@ -138,10 +138,12 @@ netD_C:add(nn.Linear(data:numClasses() * 3, 1))
 ---- tensor of size (numClasses + 1)
 --netD_C:add(nn.Linear(data:numClasses() + 1, 1))
 ---- linear transformation to output value, dim: 1
-netD_C:add(nn.Sigmoid())
+--netD_C:add(nn.Sigmoid())
 -- apply sigmoid to output value, dim: 1
 
-local criterion = nn.BCECriterion()
+--local criterion = nn.BCECriterion()
+local criterion = nn.CrossEntropyCriterion()
+
 ---------------------------------------------------------------------------
 optimStateG = {
    learningRate = opt.lr,
@@ -164,7 +166,12 @@ local word2vec_total = torch.Tensor(opt.batchSize, nz, 1, 1)
 local onehot_vec = torch.Tensor(opt.batchSize, data:numClasses(), 1, 1)
 local onehot_total = torch.Tensor(opt.batchSize, nz, 1, 1)
 
-local label = torch.Tensor(opt.batchSize)
+--local label = torch.Tensor(opt.batchSize)
+local label_real = torch.Tensor(opt.batchSize)
+local label_fake = torch.Tensor(opt.batchSize) 
+label_fake:zero()
+label_fake:fill(data:numClasses()+1)
+
 local errD, errG
 local epoch_tm = torch.Timer()
 local tm = torch.Timer()
@@ -179,15 +186,17 @@ if opt.gpu > 0 then
    word2vec_total = word2vec_total:cuda();
    onehot_vec = onehot_vec:cuda();
    onehot_total = onehot_total:cuda();
-   label = label:cuda()
+   --label = label:cuda()
+   label_real = label_real:cuda();
+   label_fake = label_fake:cuda();
    netG = util.cudnn(netG);     netD = util.cudnn(netD)
    netD:cuda();           netG:cuda();           criterion:cuda()
    netD_par:cuda();
    netD_C:cuda();
 end
 
---local parametersD, gradParametersD = netD:getParameters()
-local parametersD, gradParametersD = netD_C:getParameters()
+local parametersD, gradParametersD = netD:getParameters()
+--local parametersD, gradParametersD = netD_C:getParameters()
 local parametersG, gradParametersG = netG:getParameters()
 
 if opt.display then disp = require 'display' end
@@ -209,11 +218,11 @@ word2vec_map = Cond_Util.load_word2vec_map(word2vec_map_path, nw)
 
 -- create closure to evaluate f(X) and df/dX of discriminator
 local fDx = function(x)
-   --netD:apply(function(m) if torch.type(m):find('Convolution') then m.bias:zero() end end)
-   netD_C:apply(function(m) if torch.type(m):find('Convolution') then m.bias:zero() end end)
+   netD:apply(function(m) if torch.type(m):find('Convolution') then m.bias:zero() end end)
+   --netD_C:apply(function(m) if torch.type(m):find('Convolution') then m.bias:zero() end end)
    netG:apply(function(m) if torch.type(m):find('Convolution') then m.bias:zero() end end)
    --netD_C:apply(function(m) if torch.typename(m) == 'nn.JoinTable' then print(m.output) end end)
-   netD_C:apply(function(m) if torch.typename(m) == 'nn.Linear' then print(m:getParameters()) end end)
+   --netD_C:apply(function(m) if torch.typename(m) == 'nn.Linear' then print(m:getParameters()) end end)
 
    gradParametersD:zero()
 
@@ -246,10 +255,12 @@ local fDx = function(x)
      end
    end
    onehot_vec:zero()
+   label_real:zero()
    --onehot_vec:normal(0, 1)
    for i=1, real_class_ids:size(1) do
      class_id = real_class_ids[i]
      onehot_vec[{i, class_id, 1, 1}] = 1.0
+     label_real[{i}] = class_id
      --onehot_vec[{i, class_id}]:normal(1, 1)
      --print(onehot_vec)
      --print(i)
@@ -259,12 +270,15 @@ local fDx = function(x)
 
    data_tm:stop()
    input:copy(real)
-   label:fill(real_label)
+   --label:fill(real_label)
 
-   local output = netD_C:forward({input, onehot_vec})
-   local errD_real = criterion:forward(output, label)
-   local df_do = criterion:backward(output, label)
-   netD_C:backward({input, onehot_vec}, df_do)
+   --local output = netD_C:forward({input, onehot_vec})
+   local output = netD:forward(input)
+   print("real")
+   print(output[{{1,3}}])
+   local errD_real = criterion:forward(output, label_real)
+   local df_do = criterion:backward(output, label_real)
+   netD:backward(input, df_do)
 
    -- train with fake
    -- generate noise for word2vec_noise
@@ -295,12 +309,15 @@ local fDx = function(x)
 
    --print(onehot_vec[{{1,3}}])
    input:copy(fake)
-   label:fill(fake_label)
+   --label:fill(fake_label)
+   -- fill label vector with fake label
 
-   local output = netD_C:forward({input, onehot_vec})
-   local errD_fake = criterion:forward(output, label)
-   local df_do = criterion:backward(output, label)
-   netD_C:backward({input, onehot_vec}, df_do)
+   local output = netD:forward(input)
+   print("fake")
+   print(output[{{1,3}}])
+   local errD_fake = criterion:forward(output, label_fake)
+   local df_do = criterion:backward(output, label_fake)
+   netD:backward(input, df_do)
 
    errD = errD_real + errD_fake
 
@@ -309,8 +326,8 @@ end
 
 -- create closure to evaluate f(X) and df/dX of generator
 local fGx = function(x)
-   --netD:apply(function(m) if torch.type(m):find('Convolution') then m.bias:zero() end end)
-   netD_C:apply(function(m) if torch.type(m):find('Convolution') then m.bias:zero() end end)
+   netD:apply(function(m) if torch.type(m):find('Convolution') then m.bias:zero() end end)
+   --netD_C:apply(function(m) if torch.type(m):find('Convolution') then m.bias:zero() end end)
    netG:apply(function(m) if torch.type(m):find('Convolution') then m.bias:zero() end end)
 
    gradParametersG:zero()
@@ -319,18 +336,20 @@ local fGx = function(x)
    noise:uniform(-1, 1) -- regenerate random noise
    local fake = netG:forward(noise)
    input:copy(fake) ]]--
-   label:fill(real_label) -- fake labels are real for generator cost
+   --label:fill(real_label) -- fake labels are real for generator cost
 
-   local output = netD_C.output -- netD:forward(input) was already executed in fDx, so save computation
-   errG = criterion:forward(output, label)
-   local df_do = criterion:backward(output, label)
-   local df_dg = netD_C:updateGradInput({input, onehot_vec}, df_do)
-   --print(df_dg)
+   local output = netD.output -- netD:forward(input) was already executed in fDx, so save computation
+   errG = criterion:forward(output, label_real)
+   print("fGx:")
+   print(output[{{1,3}}])
+   print(label_real[{{1,3}}])
+   local df_do = criterion:backward(output, label_real)
+   local df_dg = netD:updateGradInput(input, df_do)
 
    if opt.word2vec == 1 then 
-     netG:backward(word2vec_total, df_dg[1])
+     netG:backward(word2vec_total, df_dg)
    elseif opt.word2vec == 0 then 
-     netG:backward(onehot_total, df_dg[1])
+     netG:backward(onehot_total, df_dg)
    else 
      error("opt.word2vec is invalid value")
    end
@@ -376,7 +395,7 @@ for epoch = 1, opt.niter do
    parametersG, gradParametersG = nil, nil
    util.save('checkpoints/' .. opt.name .. '_' .. epoch .. '_net_G.t7', netG, opt.gpu)
    --util.save('checkpoints/' .. opt.name .. '_' .. epoch .. '_net_D.t7', netD_C, opt.gpu)
-   parametersD, gradParametersD = netD_C:getParameters() -- reflatten the params and get them
+   parametersD, gradParametersD = netD:getParameters() -- reflatten the params and get them
    parametersG, gradParametersG = netG:getParameters()
    print(('End of epoch %d / %d \t Time Taken: %.3f'):format(
             epoch, opt.niter, epoch_tm:time().real))
