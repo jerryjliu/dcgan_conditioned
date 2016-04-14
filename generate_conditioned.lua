@@ -22,6 +22,7 @@ opt = {
     num_classes=3,         -- the total number of classes
     word2vec = 0,          -- toggles whether to generate based on word2vec (using word field)
                            -- or class_id (using class_id) field. Depends on training.
+    old = 0,               -- determines dimensionality of input vector
 }
 for k,v in pairs(opt) do opt[k] = tonumber(os.getenv(k)) or os.getenv(k) or opt[k] end
 print(opt)
@@ -35,12 +36,20 @@ nw = opt.nw
 nr = opt.nr
 local word2vec_vec = torch.Tensor(opt.batchSize, nw, 1, 1)
 local word2vec_noise = torch.Tensor(opt.batchSize, nr, 1, 1)
-local word2vec_total = torch.Tensor(opt.batchSize, nz, 1, 1)
+if opt.old == 0 then
+  word2vec_total = torch.Tensor(opt.batchSize, nz + nw, 1, 1)
+else 
+  word2vec_total = torch.Tensor(opt.batchSize, nz, 1, 1)
+end
 
 -- one-hot specific
 local onehot_vec = torch.Tensor(opt.batchSize, opt.num_classes, 1, 1)
-local onehot_total = torch.Tensor(opt.batchSize, nz, 1, 1)
-
+local onehot_total
+if opt.old == 0 then 
+  onehot_total = torch.Tensor(opt.batchSize, nz + opt.num_classes, 1, 1)
+else 
+  onehot_total = torch.Tensor(opt.batchSize, nz, 1, 1)
+end
 
 --noise = torch.Tensor(opt.batchSize, opt.nz, opt.imsize, opt.imsize)
 net = util.load(opt.net, opt.gpu)
@@ -75,7 +84,11 @@ if opt.word2vec == 1 then
     error("word is invalid: " .. word)
   end
   word2vec_total[{{}, {1,nw}, {}, {}}] = word2vec_vec
-  word2vec_total[{{}, {nw+1, nz}, {}, {}}] = word2vec_noise
+  if opt.old == 0 then
+    word2vec_total[{{}, {nw+1, nw + nz}, {}, {}}] = word2vec_noise
+  else 
+    word2vec_total[{{}, {nw+1, nz}, {}, {}}] = word2vec_noise
+  end
 elseif opt.word2vec == 0 then
    onehot_vec:zero()
    for i=1, opt.batchSize do
@@ -88,7 +101,11 @@ elseif opt.word2vec == 0 then
        onehot_total:normal(0, 1)
    end
    -- insert one-hot encoding into first few entries
-   onehot_total[{{}, {1,opt.num_classes}, {}, {}}] = onehot_vec
+   if opt.old == 0 then
+     onehot_total[{{}, {nz + 1,nz + opt.num_classes}, {}, {}}] = onehot_vec
+   else
+     onehot_total[{{}, {1, opt.num_classes}, {}, {}}] = onehot_vec
+   end
    print(onehot_total[{{1,5}}])
    print("hello world")
 end

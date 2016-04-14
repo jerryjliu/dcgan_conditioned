@@ -25,7 +25,7 @@ opt = {
    ntrain = math.huge,     -- #  of examples per epoch. math.huge for full dataset
    display = 0,            -- display samples while training. 0 = false
    display_id = 10,        -- display window id.
-   gpu = 2,                -- gpu = 0 is CPU mode. gpu=X is GPU mode on GPU X
+   gpu = 1,                -- gpu = 0 is CPU mode. gpu=X is GPU mode on GPU X
    name = 'experiment1',
    noise = 'normal',       -- uniform / normal
    wnid = 0,               -- jerry: wnid=1 means training folders are labeled by their
@@ -78,7 +78,12 @@ local SpatialFullConvolution = nn.SpatialFullConvolution
 
 local netG = nn.Sequential()
 -- input is Z, going into a convolution
-netG:add(SpatialFullConvolution(nz, ngf * 8, 4, 4))
+
+if opt.word2vec == 1 then 
+  netG:add(SpatialFullConvolution(nz + nw, ngf * 8, 4, 4))
+else 
+  netG:add(SpatialFullConvolution(nz + data:numClasses(), ngf * 8, 4, 4))
+end
 netG:add(SpatialBatchNormalization(ngf * 8)):add(nn.ReLU(true))
 -- state size: (ngf*8) x 4 x 4
 netG:add(SpatialFullConvolution(ngf * 8, ngf * 4, 4, 4, 2, 2, 1, 1))
@@ -159,12 +164,13 @@ local noise = torch.Tensor(opt.batchSize, nz, 1, 1)
 
 -- word2vec specific
 local word2vec_vec = torch.Tensor(opt.batchSize, nw, 1, 1)
-local word2vec_noise = torch.Tensor(opt.batchSize, nr, 1, 1)
-local word2vec_total = torch.Tensor(opt.batchSize, nz, 1, 1)
+--local word2vec_noise = torch.Tensor(opt.batchSize, nr, 1, 1)
+local word2vec_noise = torch.Tensor(opt.batchSize, nz, 1, 1)
+local word2vec_total = torch.Tensor(opt.batchSize, nz + nw, 1, 1)
 
 -- one-hot specific
 local onehot_vec = torch.Tensor(opt.batchSize, data:numClasses(), 1, 1)
-local onehot_total = torch.Tensor(opt.batchSize, nz, 1, 1)
+local onehot_total = torch.Tensor(opt.batchSize, nz + data:numClasses(), 1, 1)
 
 --local label = torch.Tensor(opt.batchSize)
 local label_real = torch.Tensor(opt.batchSize)
@@ -291,7 +297,7 @@ local fDx = function(x)
      end
      --concatenate word2vec_noise and word2vec_vec into word2vec_total
      word2vec_total[{{}, {1,nw}, {}, {}}] = word2vec_vec
-     word2vec_total[{{}, {nw+1, nz}, {}, {}}] = word2vec_noise
+     word2vec_total[{{}, {nw+1, nw + nz}, {}, {}}] = word2vec_noise
      --print(word2vec_total[{{1,3}}])
 
      fake = netG:forward(word2vec_total)
@@ -302,7 +308,7 @@ local fDx = function(x)
          onehot_total:normal(0, 1)
      end
      -- insert one-hot encoding into first few entries
-     onehot_total[{{}, {1,data:numClasses()}, {}, {}}] = onehot_vec
+     onehot_total[{{}, {nz + 1, nz + data:numClasses()}, {}, {}}] = onehot_vec
      --print(onehot_total[{{1,3}}])
      fake = netG:forward(onehot_total)
    end
