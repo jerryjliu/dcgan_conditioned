@@ -2,8 +2,10 @@ require 'torch'
 require 'nn'
 require 'optim'
 
-word2vec_map_path = '/data/courses/iw16/jjliu/word2vec/word2vec/word2vec_output.txt'
-synset_map_path = '/data/courses/iw16/jjliu/imagenet/wnid_synset_map.txt'
+--word2vec_map_path = '/data/courses/iw16/jjliu/word2vec/word2vec/word2vec_output.txt'
+word2vec_map_path = '/home/jjliu/word2vec/word2vec/word2vec_output.txt'
+--synset_map_path = '/data/courses/iw16/jjliu/imagenet/wnid_synset_map.txt'
+synset_map_path = '/home/jjliu/imagenet/wnid_synset_map.txt'
 
 util = paths.dofile('util.lua')
 
@@ -20,7 +22,7 @@ opt = {
    nThreads = 4,           -- #  of data loading threads to use
    niter = 50,             -- #  of iter at starting learning rate
    --lr = 0.0002,            -- initial learning rate for adam
-   lr=0.0001,
+   lr=0.00005,
    beta1 = 0.5,            -- momentum term of adam
    ntrain = math.huge,     -- #  of examples per epoch. math.huge for full dataset
    display = 0,            -- display samples while training. 0 = false
@@ -123,7 +125,7 @@ netD:add(SpatialBatchNormalization(ndf * 8)):add(nn.LeakyReLU(0.2, true))
 netD:add(SpatialConvolution(ndf * 8, data:numClasses() + 1, 4, 4))
 -- state size: numClasses+1 x 1 x 1
 netD:add(nn.View(data:numClasses() + 1):setNumInputDims(3))
----- state size: numClasses
+---- state size: numClasses + 1
 netD:apply(weights_init)
 
 -- input is {(nc)x64x64, numClassesx1x1}
@@ -312,6 +314,8 @@ local fDx = function(x)
      --print(onehot_total[{{1,3}}])
      fake = netG:forward(onehot_total)
    end
+
+   print(onehot_total:size())
 
    --print(onehot_vec[{{1,3}}])
    input:copy(fake)

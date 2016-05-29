@@ -106,7 +106,7 @@ elseif opt.word2vec == 0 then
    else
      onehot_total[{{}, {1, opt.num_classes}, {}, {}}] = onehot_vec
    end
-   print(onehot_total[{{1,5}}])
+   --print(onehot_total[{{1,5}}])
    print("hello world")
 end
 
